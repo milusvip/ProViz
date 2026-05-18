@@ -16,6 +16,11 @@ ProViz 就是为了解决这个问题而生的 —— 免费、开源、自由�
 
 ## 功能
 
+![右键菜单](screenshots/context-menu.png)
+![反推浮层](screenshots/pre-overlay.png)
+![结果展示](screenshots/result-overlay.png)
+![设置页面](screenshots/options.png)
+
 - **右键反推**：在任意图片上右键 →「反推此图片的提示词」→ 确认后自动分析
 - **语言选择**：反推前可选中文/英文输出
 - **多 API 配置**：同时管理多组 API Key，随时切换
