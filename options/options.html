@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>ProViz - 设置</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div style="display:flex;align-items:center;gap:10px">
+        <img src="../icons/icon128.png" width="24" height="24" alt="ProViz" style="border-radius:4px">
+        <h1>配置管理</h1>
+      </div>
+      <div class="header-actions">
+        <button id="btnNewConfig" class="btn-ghost">新建配置</button>
+        <a href="#" id="btnBack" class="btn-ghost">关闭</a>
+      </div>
+    </header>
+
+    <!-- 编辑表单 -->
+    <section id="formSection" class="card form-panel hidden">
+      <div class="form-hd">
+        <h2 id="formTitle">新建配置</h2>
+        <button id="btnCancelForm" class="btn-ghost btn-sm">取消</button>
+      </div>
+
+      <!-- 模型选择 — 放在最上面 -->
+      <div class="field">
+        <label for="modelSelect">选择模型</label>
+        <select id="modelSelect">
+          <optgroup label="Anthropic Claude">
+            <option value="claude-sonnet-4" selected>Claude Sonnet 4</option>
+            <option value="claude-opus-4">Claude Opus 4</option>
+            <option value="claude-3.5-sonnet">Claude 3.5 Sonnet</option>
+            <option value="claude-3.5-haiku">Claude 3.5 Haiku</option>
+            <option value="claude-3-opus">Claude 3 Opus</option>
+            <option value="claude-3-haiku">Claude 3 Haiku</option>
+          </optgroup>
+          <optgroup label="OpenAI">
+            <option value="gpt-4o">GPT-4o</option>
+            <option value="gpt-4o-mini">GPT-4o Mini</option>
+            <option value="gpt-4.1">GPT-4.1</option>
+            <option value="gpt-4.1-mini">GPT-4.1 Mini</option>
+            <option value="gpt-4.1-nano">GPT-4.1 Nano</option>
+          </optgroup>
+          <optgroup label="Google Gemini">
+            <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
+            <option value="gemini-2.0-flash">Gemini 2.0 Flash</option>
+          </optgroup>
+          <optgroup label="其他">
+            <option value="qwen-vl-max">Qwen VL Max (通义千问)</option>
+            <option value="step-2">Step-2 (阶跃星辰)</option>
+            <option value="deepseek-vl2">DeepSeek VL2</option>
+            <option value="custom">自定义...</option>
+          </optgroup>
+        </select>
+        <p class="hint" id="modelHint">选择模型后将自动填入对应的 API 地址和参数</p>
+      </div>
+
+      <div class="field">
+        <label for="apiUrl">API 端点 URL</label>
+        <input type="url" id="apiUrl" placeholder="自动填入">
+        <p class="hint">根据所选模型自动填充，如需代理可手动修改</p>
+      </div>
+
+      <div class="field">
+        <label for="modelName">模型标识</label>
+        <input type="text" id="modelName" placeholder="自动填入" readonly>
+      </div>
+
+      <div class="field">
+        <label for="apiKey">API Key</label>
+        <input type="password" id="apiKey" placeholder="输入你的 API Key">
+        <p class="hint" id="apiKeyHint"></p>
+      </div>
+
+      <div class="field">
+        <label for="promptLang">提示词语言</label>
+        <select id="promptLang">
+          <option value="zh">中文</option>
+          <option value="en">English</option>
+        </select>
+        <p class="hint">选择默认提示词的语言，填了自定义提示词后不生效</p>
+      </div>
+
+      <div class="field" id="systemPromptField">
+        <label for="systemPrompt">系统提示词（可选）</label>
+        <textarea id="systemPrompt" rows="3" placeholder="留空则使用默认提示词"></textarea>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label for="responseTextPath">text_prompt 响应路径</label>
+          <input type="text" id="responseTextPath" placeholder="自动">
+        </div>
+        <div class="field">
+          <label for="responseJsonPath">json_prompt 响应路径</label>
+          <input type="text" id="responseJsonPath" placeholder="自动">
+        </div>
+      </div>
+      <p class="hint">响应字段提取路径，留空则自动解析</p>
+
+      <details class="adv-section">
+        <summary>高级设置</summary>
+        <div class="field-check">
+          <label>
+            <input type="checkbox" id="useCustomTemplate">
+            使用自定义请求模板
+          </label>
+          <textarea id="customTemplate" rows="4" placeholder='{"model":"{{MODEL}}"}' disabled></textarea>
+          <p class="hint">可用变量: <code>{{BASE64}}</code> <code>{{MIME_TYPE}}</code> <code>{{MODEL}}</code></p>
+        </div>
+      </details>
+
+      <div class="form-actions">
+        <button id="btnSave" class="btn-primary">保存</button>
+        <button id="btnTest" class="btn-ghost">测试连接</button>
+        <span id="saveStatus" class="save-status"></span>
+      </div>
+    </section>
+
+    <!-- 配置列表 -->
+    <section id="configListSection" class="card">
+      <h2>已保存的配置</h2>
+      <div id="configList"></div>
+      <div id="emptyHint" class="empty-hint">
+        <p>暂无配置，选择模型并保存</p>
+      </div>
+    </section>
+
+    <section class="card usage">
+      <h2>使用说明</h2>
+      <ol>
+        <li>选择模型 → 自动填入 API 地址 → 填入你的 API Key → 保存</li>
+        <li>在任意网页 <strong>右键</strong> 图片 &gt; 「反推此图片的提示词」</li>
+        <li>或点击插件图标 &gt; 「<strong>开始反推</strong>」&gt; 点击页面上任意图片</li>
+        <li>结果会自动保存在弹窗历史中</li>
+      </ol>
+    </section>
+  </div>
+  <script src="options.js"></script>
+</body>
+</html>

@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="glass">
+    <div class="head">
+      <div class="logo">
+        <img src="../icons/icon128.png" width="18" height="18" alt="ProViz" style="border-radius:4px">
+        <span>ProViz</span>
+      </div>
+      <div class="head-right">
+        <span id="apiIndicator"></span>
+        <button id="btnSettings" class="btn-gear" title="设置">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="rule"></div>
+
+    <div class="body">
+      <div id="noConfig" class="no-cfg hidden">
+        <p>请先配置 API</p>
+        <a href="#" id="linkOptions">前往设置 →</a>
+      </div>
+
+      <div id="resultArea" class="result hidden">
+        <div class="tabs">
+          <button class="tab active" data-tab="text">文字</button>
+          <button class="tab" data-tab="json">JSON</button>
+        </div>
+        <div class="shell">
+          <div class="core">
+            <pre id="textPrompt" class="p-text"></pre>
+            <pre id="jsonPrompt" class="p-json hidden"></pre>
+          </div>
+        </div>
+        <div class="acts">
+          <button id="btnCopy" class="btn-g">复制当前</button>
+          <button id="btnCopyAll" class="btn-g">复制全部</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="hist">
+      <div class="hd">
+        <h2>历史</h2>
+        <button id="btnClearHistory" class="btn-x hidden">清空</button>
+      </div>
+      <div id="historyList" class="hl"></div>
+    </div>
+
+    <div class="ft">
+      <span>也可右键图片 → 反推提示词</span>
+    </div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
