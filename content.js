@@ -13,6 +13,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       showPreOverlay(message.imageUrl);
       sendResponse({ ok: true });
       break;
+    case 'SHOW_SCREENSHOT_SELECTOR':
+      showScreenshotSelector();
+      sendResponse({ ok: true });
+      break;
   }
 });
 
@@ -37,7 +41,7 @@ function showPreOverlay(imageUrl) {
 
   // header
   const hd = document.createElement('div');
-  hd.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;border-bottom:2px solid #000;padding-bottom:12px';
+  hd.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;border-bottom:2px solid #000;padding-bottom:12px;cursor:move';
   const title = document.createElement('span');
   title.style.cssText = 'font-size:15px;font-weight:700;color:#111;letter-spacing:-0.2px';
   title.textContent = 'ProViz';
@@ -171,8 +175,168 @@ function showPreOverlay(imageUrl) {
     document.head.appendChild(s);
   }
 
+  makeDraggable(panel, hd);
+
   panel.append(hd, imgWrap, statusEl, langBar, footer);
   overlay.append(back, panel);
+  document.body.appendChild(overlay);
+}
+
+// ---- 截图区域选择器 ----
+
+function showScreenshotSelector() {
+  removeExistingOverlay();
+  removeToast();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'prompt-overlay';
+
+  // 遮罩背景（用于选中后变暗区域）
+  const back = document.createElement('div');
+  back.style.cssText = 'position:fixed;inset:0;z-index:2147483646;background:rgba(0,0,0,0);cursor:crosshair';
+
+  // 选区指示器
+  const selEl = document.createElement('div');
+  selEl.id = 'prompt-sel-rect';
+  selEl.style.cssText = 'position:fixed;z-index:2147483647;border:2px solid #ff0066;background:rgba(255,0,102,0.08);display:none;pointer-events:none;box-shadow:0 0 0 9999px rgba(0,0,0,0.3)';
+
+  // 提示文字
+  const hint = document.createElement('div');
+  hint.id = 'prompt-sel-hint';
+  hint.style.cssText = 'position:fixed;bottom:40px;left:50%;transform:translateX(-50%);z-index:2147483647;background:#111;color:#fff;padding:10px 22px;font-size:13px;font-weight:600;font-family:-apple-system,BlinkMacSystemFont,sans-serif;border:2px solid #000;pointer-events:none;white-space:nowrap';
+  hint.textContent = '拖动鼠标选择要反推的区域  ·  Esc 取消';
+
+  // 确认工具栏（选中后显示）
+  const toolbar = document.createElement('div');
+  toolbar.id = 'prompt-sel-toolbar';
+  toolbar.style.cssText = 'position:fixed;z-index:2147483647;display:none;gap:8px;padding:8px;min-width:200px';
+
+  const btnConfirm = document.createElement('button');
+  btnConfirm.textContent = '✓ 确认反推';
+  btnConfirm.style.cssText = 'flex:1;padding:8px 18px;background:#ff0066;border:2px solid #000;color:#fff;cursor:pointer;font-size:13px;font-weight:700;font-family:inherit;transition:all 0.15s;white-space:nowrap;line-height:1.4';
+  btnConfirm.onmouseenter = () => { btnConfirm.style.background = '#e00059'; };
+  btnConfirm.onmouseleave = () => { btnConfirm.style.background = '#ff0066'; };
+
+  const btnCancel = document.createElement('button');
+  btnCancel.textContent = '取消';
+  btnCancel.style.cssText = 'flex:1;padding:8px 14px;background:#fff;border:2px solid #ddd;color:#666;cursor:pointer;font-size:13px;font-weight:600;font-family:inherit;transition:all 0.15s;white-space:nowrap;line-height:1.4';
+  btnCancel.onmouseenter = () => { btnCancel.style.borderColor = '#ff0066'; btnCancel.style.color = '#ff0066'; };
+  btnCancel.onmouseleave = () => { btnCancel.style.borderColor = '#ddd'; btnCancel.style.color = '#666'; };
+
+  toolbar.append(btnConfirm, btnCancel);
+
+  let startX, startY, isDragging = false;
+
+  function updateSelection(e) {
+    const clampedX = Math.max(0, Math.min(e.clientX, window.innerWidth));
+    const clampedY = Math.max(0, Math.min(e.clientY, window.innerHeight));
+    const x = Math.max(0, Math.min(startX, clampedX));
+    const y = Math.max(0, Math.min(startY, clampedY));
+    const w = Math.abs(clampedX - startX);
+    const h = Math.abs(clampedY - startY);
+    selEl.style.left = x + 'px';
+    selEl.style.top = y + 'px';
+    selEl.style.width = w + 'px';
+    selEl.style.height = h + 'px';
+    selEl.style.display = w > 0 || h > 0 ? 'block' : 'none';
+    selEl.style.boxShadow = `0 0 0 9999px rgba(0,0,0,0.3)`;
+  }
+
+  function getSelectionRect() {
+    const left = parseFloat(selEl.style.left);
+    const top = parseFloat(selEl.style.top);
+    const w = parseFloat(selEl.style.width);
+    const h = parseFloat(selEl.style.height);
+    return { x: left, y: top, w, h };
+  }
+
+  function showToolbar() {
+    const rect = getSelectionRect();
+    const bw = 2;
+    toolbar.style.display = 'flex';
+    toolbar.style.left = Math.max(4, Math.min(rect.x - bw, window.innerWidth - toolbar.offsetWidth - 4)) + 'px';
+    toolbar.style.top = (rect.y + rect.h + 8) + 'px';
+  }
+
+  function cleanup() {
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    document.removeEventListener('keydown', onKey);
+  }
+
+  function onKey(e) {
+    if (e.key === 'Escape') {
+      cleanup();
+      overlay.remove();
+    }
+  }
+
+  function onMove(e) {
+    if (!isDragging) return;
+    e.preventDefault();
+    updateSelection(e);
+  }
+
+  function onUp(e) {
+    if (!isDragging) return;
+    isDragging = false;
+    const rect = getSelectionRect();
+    if (rect.w < 5 || rect.h < 5) {
+      selEl.style.display = 'none';
+      return;
+    }
+    showToolbar();
+  }
+
+  back.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
+    startX = e.clientX;
+    startY = e.clientY;
+    isDragging = true;
+    toolbar.style.display = 'none';
+    updateSelection(e);
+  });
+
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+  document.addEventListener('keydown', onKey);
+
+  btnCancel.addEventListener('click', () => {
+    cleanup();
+    overlay.remove();
+  });
+
+  btnConfirm.addEventListener('click', () => {
+    const rect = getSelectionRect();
+    if (rect.w < 5 || rect.h < 5) return;
+    cleanup();
+    overlay.remove();
+
+    // 通知 background 截取所选区域，返回后显示预分析浮层
+    chrome.runtime.sendMessage({
+      type: 'CAPTURE_REGION',
+      rect,
+      dpr: window.devicePixelRatio || 1
+    }).then(response => {
+      if (response?.dataUrl) {
+        showPreOverlay(response.dataUrl);
+      } else {
+        showToast('截图失败: ' + (response?.error || '未知错误'));
+      }
+    }).catch(err => {
+      showToast('截图失败');
+      console.error('[ProViz] CAPTURE_REGION error:', err);
+    });
+  });
+
+  if (!document.getElementById('o-s')) {
+    const s = document.createElement('style');
+    s.id = 'o-s';
+    s.textContent = '@keyframes oIn{from{opacity:0;transform:translate(-50%,-50%) scale(0.95)}to{opacity:1;transform:translate(-50%,-50%) scale(1)}}@keyframes prSpin{to{transform:rotate(360deg)}}';
+    document.head.appendChild(s);
+  }
+
+  overlay.append(back, selEl, hint, toolbar);
   document.body.appendChild(overlay);
 }
 
@@ -223,7 +387,7 @@ function showResultOverlay(entry) {
 
   // header
   const hd = overlay.querySelector('.o-hd');
-  hd.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;border-bottom:2px solid #000;padding-bottom:12px';
+  hd.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;border-bottom:2px solid #000;padding-bottom:12px;cursor:move';
   overlay.querySelector('.o-tt').style.cssText = 'font-size:15px;font-weight:700;color:#111;letter-spacing:-0.2px';
   const xBtn = overlay.querySelector('.o-x');
   xBtn.style.cssText = 'background:none;border:2px solid #ddd;color:#999;width:28px;height:28px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:16px;transition:all 0.15s;line-height:1;font-weight:700';
@@ -299,6 +463,8 @@ function showResultOverlay(entry) {
     document.head.appendChild(s);
   }
 
+  makeDraggable(pnl, hd);
+
   document.body.appendChild(overlay);
 }
 
@@ -355,4 +521,47 @@ function showToast(msg) {
 function removeToast() {
   const existing = document.getElementById('prompt-toast');
   if (existing) existing.remove();
+}
+
+// ---- 窗口拖拽 ----
+
+function makeDraggable(el, handle) {
+  let isDragging = false;
+  let startX, startY, startLeft, startTop;
+
+  function onMove(e) {
+    if (!isDragging) return;
+    el.style.left = (startLeft + e.clientX - startX) + 'px';
+    el.style.top = (startTop + e.clientY - startY) + 'px';
+  }
+
+  function onUp() {
+    if (!isDragging) return;
+    isDragging = false;
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+  }
+
+  handle.addEventListener('mousedown', (e) => {
+    if (e.button !== 0 || e.target !== handle && !handle.contains(e.target)) return;
+    const btn = e.target.closest('button');
+    if (btn) return; // 按钮不触发拖拽
+    e.preventDefault();
+
+    const rect = el.getBoundingClientRect();
+    if (el.style.transform && el.style.transform !== 'none') {
+      el.style.left = rect.left + 'px';
+      el.style.top = rect.top + 'px';
+      el.style.transform = 'none';
+    }
+
+    isDragging = true;
+    startX = e.clientX;
+    startY = e.clientY;
+    startLeft = parseInt(el.style.left);
+    startTop = parseInt(el.style.top);
+
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  });
 }

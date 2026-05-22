@@ -5,6 +5,11 @@ chrome.runtime.onInstalled.addListener(() => {
     title: '反推此图片的提示词',
     contexts: ['image']
   });
+  chrome.contextMenus.create({
+    id: 'screenshot-reverse',
+    title: '截图反推提示词',
+    contexts: ['page', 'image']
+  });
 });
 
 // 处理右键菜单点击
@@ -15,6 +20,15 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
       .catch(() => {
         // content script 未加载 → 直接调用 API 并显示结果浮层
         handleImageReverse(info.srcUrl, tab).then(() => {
+          showOverlayInTab(tab.id);
+        });
+      });
+  } else if (info.menuItemId === 'screenshot-reverse') {
+    // 通知 content script 显示截图区域选择器
+    chrome.tabs.sendMessage(tab.id, { type: 'SHOW_SCREENSHOT_SELECTOR' })
+      .catch(() => {
+        // content script 未加载，直接截取全屏
+        handleScreenshotReverse(null, 1, tab).then(() => {
           showOverlayInTab(tab.id);
         });
       });
@@ -75,6 +89,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return true;
     }
 
+    case 'REGION_SELECTED':
+      handleScreenshotReverse(message.rect, message.dpr, sender.tab || null)
+        .then(result => {
+          showOverlayInTab(sender.tab?.id);
+          sendResponse(result);
+        });
+      return true;
+
+    case 'CAPTURE_REGION': {
+      const tab = sender.tab;
+      if (!tab) { sendResponse({ error: 'No tab' }); return true; }
+      handleRegionCapture(message.rect, message.dpr, tab)
+        .then(dataUrl => sendResponse({ dataUrl }))
+        .catch(err => sendResponse({ error: err.message }));
+      return true;
+    }
+
     case 'GET_CONFIG':
       getConfig().then(cfg => sendResponse(cfg));
       return true;
@@ -110,6 +141,68 @@ async function handleImageReverse(imageUrl, tab, systemPrompt) {
     await chrome.storage.local.set({ history, pendingResult: entry });
     return { error: err.message };
   }
+}
+
+async function handleScreenshotReverse(rect, dpr, tab) {
+  try {
+    // 截取当前可视区域
+    const fullDataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'png' });
+    let dataUrl = fullDataUrl;
+
+    if (rect && rect.w > 0 && rect.h > 0) {
+      dataUrl = await cropImage(fullDataUrl, rect, dpr || 1);
+    }
+
+    return await callApiAndSave(dataUrl, null);
+  } catch (err) {
+    console.error('截图反推失败:', err);
+    const entry = {
+      id: Date.now(),
+      timestamp: new Date().toISOString(),
+      textPrompt: '[错误] ' + err.message,
+      jsonPrompt: '',
+      thumbnail: '',
+      isError: true
+    };
+    const history = await getHistory();
+    history.unshift(entry);
+    if (history.length > 50) history.length = 50;
+    await chrome.storage.local.set({ history, pendingResult: entry });
+    return { error: err.message };
+  }
+}
+
+async function handleRegionCapture(rect, dpr, tab) {
+  const fullDataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'png' });
+  let dataUrl = fullDataUrl;
+  if (rect && rect.w && rect.w > 0 && rect.h && rect.h > 0) {
+    dataUrl = await cropImage(fullDataUrl, rect, dpr || 1);
+  }
+  return dataUrl;
+}
+
+async function cropImage(dataUrl, rect, dpr) {
+  const response = await fetch(dataUrl);
+  const blob = await response.blob();
+  const img = await createImageBitmap(blob);
+
+  const x = Math.round(rect.x * dpr);
+  const y = Math.round(rect.y * dpr);
+  const w = Math.round(rect.w * dpr);
+  const h = Math.round(rect.h * dpr);
+
+  const canvas = new OffscreenCanvas(w, h);
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(img, x, y, w, h, 0, 0, w, h);
+
+  const croppedBlob = await canvas.convertToBlob({ type: 'image/png' });
+  const buffer = await croppedBlob.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return `data:image/png;base64,${btoa(binary)}`;
 }
 
 async function callApiAndSave(dataUrl, systemPrompt) {
@@ -442,7 +535,7 @@ function injectOverlay(entry) {
 
   // 头部
   const header = document.createElement('div');
-  header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;border-bottom:2px solid #000;padding-bottom:12px';
+  header.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;border-bottom:2px solid #000;padding-bottom:12px;cursor:move';
   const title = document.createElement('span');
   title.style.cssText = 'font-size:15px;font-weight:700;color:#111;letter-spacing:-0.2px';
   title.textContent = 'ProViz';
@@ -536,6 +629,36 @@ function injectOverlay(entry) {
 
   panel.append(header, tabs, body, footer);
   root.append(backdrop, panel);
+
+  // 拖拽
+  (function() {
+    let dragging = false, sx, sy, sl, st;
+    header.addEventListener('mousedown', function(e) {
+      if (e.button !== 0) return;
+      if (e.target.closest('button')) return;
+      e.preventDefault();
+      var r = panel.getBoundingClientRect();
+      if (panel.style.transform && panel.style.transform !== 'none') {
+        panel.style.left = r.left + 'px';
+        panel.style.top = r.top + 'px';
+        panel.style.transform = 'none';
+      }
+      dragging = true; sx = e.clientX; sy = e.clientY;
+      sl = parseInt(panel.style.left); st = parseInt(panel.style.top);
+      function onMove(e2) {
+        if (!dragging) return;
+        panel.style.left = (sl + e2.clientX - sx) + 'px';
+        panel.style.top = (st + e2.clientY - sy) + 'px';
+      }
+      function onUp() { dragging = false;
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+      }
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  })();
+
   document.body.appendChild(root);
 }
 
